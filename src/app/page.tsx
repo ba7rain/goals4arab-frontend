@@ -1,103 +1,120 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useState } from "react";
+import MatchCard from "@/components/MatchCard";
+import { fetchJSON, LiveResp, TodayResp, UpResp, Fixture } from "@/lib/api";
+
+type SectionProps = { title: string; items: Fixture[]; emptyText?: string };
+function Section({ title, items, emptyText }: SectionProps) {
+  return (
+    <section className="container my-6">
+      <h2 className="section-title">{title}</h2>
+      {items.length === 0 ? (
+        <div className="card text-sm text-gray-600">{emptyText ?? "لا توجد عناصر"}</div>
+      ) : (
+        <div className="grid gap-3">
+          {items.map((f) => <MatchCard key={f.id} f={f} />)}
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [live, setLive] = useState<Fixture[]>([]);
+  const [today, setToday] = useState<Fixture[]>([]);
+  const [todayDate, setTodayDate] = useState<string>("");
+  const [fallbackDate, setFallbackDate] = useState<string | null>(null);
+  const [upcoming, setUpcoming] = useState<UpResp["schedule"]>([]);
+  const [loading, setLoading] = useState(true);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const [liveRes, todayRes] = await Promise.all([
+          fetchJSON<LiveResp>("/api/live"),
+          fetchJSON<TodayResp>("/api/fixtures/today"),
+        ]);
+
+        if (cancelled) return;
+        setLive(liveRes.fixtures ?? []);
+        setToday(todayRes.fixtures ?? []);
+        setTodayDate(todayRes.date_utc ?? "");
+
+        // If no matches today, auto-fallback to tomorrow and upcoming
+        if (!todayRes.fixtures || todayRes.fixtures.length === 0) {
+          const tomorrow = await fetchJSON<TodayResp>("/api/fixtures/tomorrow");
+          if (cancelled) return;
+          setFallbackDate(tomorrow.date_utc ?? null);
+          setToday(tomorrow.fixtures ?? []);
+
+          // also show the next 7 days compact schedule
+          const up = await fetchJSON<UpResp>("/api/fixtures/upcoming?days=7");
+          if (!cancelled) setUpcoming(up.schedule ?? []);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    const t = setInterval(load, 30_000); // refresh every 30s for live
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+
+  return (
+    <main className="pb-16">
+      <header className="bg-white/80 backdrop-blur border-b">
+        <div className="container py-4 flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Goals4Arab</h1>
+          <div className="text-sm text-gray-500">نتائج مباشرة ومباريات اليوم</div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+      </header>
+
+      {loading ? (
+        <section className="container my-8">
+          <div className="card animate-pulse h-20" />
+          <div className="card animate-pulse h-20 mt-3" />
+        </section>
+      ) : (
+        <>
+          <Section
+            title="المباريات المباشرة الآن"
+            items={live}
+            emptyText="لا توجد مباريات مباشرة الآن"
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
+
+          <Section
+            title={fallbackDate ? `مباريات يوم ${fallbackDate}` : `مباريات اليوم (${todayDate})`}
+            items={today}
+            emptyText="لا توجد مباريات اليوم"
           />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+
+          {upcoming.length > 0 && (
+            <section className="container my-6">
+              <h2 className="section-title">خلال ٧ أيام قادمة</h2>
+              <div className="grid gap-6">
+                {upcoming.map((d) => (
+                  <div key={d.date_utc} className="space-y-2">
+                    <div className="text-sm text-gray-500">{d.date_utc}</div>
+                    <div className="grid gap-3">
+                      {d.fixtures.map((f) => <MatchCard key={f.id} f={f} />)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </>
+      )}
+
+      <footer className="container my-8 text-center text-xs text-gray-400">
+        © {new Date().getFullYear()} Goals4Arab
       </footer>
-    </div>
+    </main>
   );
 }
