@@ -2,28 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Simple, readable, row-focused */
 .container { @apply max-w-3xl mx-auto px-3; }
 
-.header { @apply border-b; }
-.header-inner { @apply container py-4 flex items-center justify-between; }
+.header { @apply sticky top-0 z-20 bg-white/90 backdrop-blur border-b; }
+.header-inner { @apply container py-3 flex items-center justify-between gap-3; }
 
-.section { @apply container my-6; }
-.section-title { @apply text-lg font-bold mb-3; }
+.section { @apply container my-5; }
+.section-title { @apply text-base font-bold mb-2; }
+
+.controls { @apply flex items-center gap-2 flex-wrap; }
+.date-input { @apply border rounded-lg px-3 py-2 text-sm; }
+.nav-btn { @apply border rounded-lg px-2.5 py-1 text-sm hover:bg-gray-50; }
+.select { @apply border rounded-lg px-3 py-2 text-sm bg-white; }
 
 .list { @apply divide-y; }
-.row { @apply flex items-center justify-between py-3; }
-
+.row { @apply flex items-center justify-between py-2; } /* compact */
 .team { @apply flex items-center gap-2 min-w-0; }
 .team-name { @apply truncate; }
+.score { @apply text-lg font-bold tabular-nums; } /* slightly smaller */
+.kick { @apply text-[11px] text-gray-500; }
 
-.kick { @apply text-xs text-gray-500; }
-.score { @apply text-xl font-bold tabular-nums; }
-
-.badge { @apply text-xs px-2 py-0.5 rounded-full border; }
+.badge { @apply text-[11px] px-2 py-0.5 rounded-full border; }
 .badge-live { @apply border-red-300 text-red-700; }
 .badge-done { @apply border-emerald-300 text-emerald-700; }
 .badge-soon { @apply border-gray-300 text-gray-600; }
 
 .empty { @apply text-sm text-gray-500 border rounded-lg p-4; }
 .footer { @apply container my-10 text-center text-xs text-gray-400; }
+
+.link { @apply block hover:bg-gray-50 rounded-lg; }

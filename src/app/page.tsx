@@ -1,17 +1,72 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { fetchJSON, DateResp, Fixture } from "@/lib/api";
 import MatchRow from "@/components/MatchRow";
-import { fetchJSON, Fixture } from "@/lib/api";
+
+type LeagueOpt = { id: number; label: string };
 
 export default function Home() {
-  // selected date (YYYY-MM-DD), default = today UTC
+  // date state
   const [date, setDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  // fixtures
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  // league filter
+  const [league, setLeague] = useState<number | "all">("all");
 
-  // formatted “last updated”
+  // build league options from fixtures
+  const leagues: LeagueOpt[] = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const f of fixtures) {
+      const label = f.league_name || `الدوري #${f.league_id}`;
+      map.set(f.league_id, label);
+    }
+    return Array.from(map, ([id, label]) => ({ id, label })).sort((a, b) =>
+      a.label.localeCompare(b.label, "ar")
+    );
+  }, [fixtures]);
+
+  const filtered = useMemo(
+    () => (league === "all" ? fixtures : fixtures.filter((f) => f.league_id === league)),
+    [fixtures, league]
+  );
+
+  async function loadForDate(d: string) {
+    setLoading(true);
+    try {
+      const res = await fetchJSON<DateResp>(`/api/fixtures/date/${d}`);
+      setFixtures(res.fixtures ?? []);
+      setLastUpdated(new Date());
+    } catch {
+      setFixtures([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let stop = false;
+    const run = async () => { if (!stop) await loadForDate(date); };
+    run();
+    const t = setInterval(run, 30_000);
+    return () => { stop = true; clearInterval(t); };
+  }, [date]);
+
+  // prev/next/today helpers
+  const prevDay = () => {
+    const d = new Date(date);
+    d.setUTCDate(d.getUTCDate() - 1);
+    setDate(d.toISOString().slice(0, 10));
+  };
+  const nextDay = () => {
+    const d = new Date(date);
+    d.setUTCDate(d.getUTCDate() + 1);
+    setDate(d.toISOString().slice(0, 10));
+  };
+  const today = () => setDate(new Date().toISOString().slice(0, 10));
+
   const since = useMemo(() => {
     if (!lastUpdated) return "";
     const diff = Math.floor((Date.now() - lastUpdated.getTime()) / 1000);
@@ -20,77 +75,57 @@ export default function Home() {
     return `آخر تحديث قبل ${mins} دقيقة`;
   }, [lastUpdated]);
 
-  // load fixtures for the selected date
-  async function loadForDate(d: string) {
-    setLoading(true);
-    try {
-      const res = await fetchJSON<{ date_utc: string; fixtures: Fixture[] }>(`/api/fixtures/date/${d}`);
-      setFixtures(res.fixtures ?? []);
-      setLastUpdated(new Date());
-    } catch (err) {
-      console.error(err);
-      setFixtures([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // initial load + refresh every 30s for the selected date
-  useEffect(() => {
-    let cancelled = false;
-
-    const run = async () => {
-      if (cancelled) return;
-      await loadForDate(date);
-    };
-
-    run();
-    const t = setInterval(run, 30_000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, [date]); // re-run when the date changes
-
   return (
     <main>
-      {/* Header with date picker at the very top */}
+      {/* Sticky header with date + nav + league filter */}
       <header className="header">
         <div className="header-inner">
-          <h1 className="text-2xl font-bold">Goals4Arab</h1>
+          <h1 className="text-xl font-bold">Goals4Arab</h1>
 
-          {/* date picker */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-600">اختر التاريخ:</label>
+          <div className="controls">
+            <button className="nav-btn" onClick={prevDay}>أمس</button>
+            <button className="nav-btn" onClick={today}>اليوم</button>
+            <button className="nav-btn" onClick={nextDay}>غدًا</button>
+
             <input
               type="date"
-              className="border rounded-lg px-3 py-2 text-sm"
+              className="date-input"
               dir="ltr"
               value={date}
               onChange={(e) => setDate(e.target.value)}
             />
+
+            <select
+              className="select"
+              value={league === "all" ? "all" : String(league)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setLeague(v === "all" ? "all" : Number(v));
+              }}
+            >
+              <option value="all">كل الدوريات</option>
+              {leagues.map((l) => (
+                <option key={l.id} value={l.id}>{l.label}</option>
+              ))}
+            </select>
           </div>
         </div>
 
-        {/* last updated */}
         <div className="header-inner pt-0">
           <div className="text-xs text-gray-500">{since}</div>
         </div>
       </header>
 
-      {/* Single section that shows ONLY the selected date */}
       <section className="section">
         <h2 className="section-title">مباريات يوم {date}</h2>
 
         {loading ? (
           <div className="empty">...جاري التحميل</div>
-        ) : fixtures.length === 0 ? (
-          <div className="empty">لا توجد مباريات في هذا التاريخ</div>
+        ) : filtered.length === 0 ? (
+          <div className="empty">لا توجد مباريات لهذا الاختيار</div>
         ) : (
           <div className="list">
-            {fixtures.map((f) => (
-              <MatchRow key={f.id} f={f} />
-            ))}
+            {filtered.map((f) => <MatchRow key={f.id} f={f} />)}
           </div>
         )}
       </section>

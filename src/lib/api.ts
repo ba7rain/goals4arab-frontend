@@ -4,16 +4,15 @@ export type Team = { id:number; name:string; code?:string; logo?:string };
 export type Fixture = {
   id:number;
   league_id:number;
-  state_id:number; // 1 scheduled, 2 live, etc.
+  league_name?: string | null; // may be null if backend not updated yet
+  state_id:number; // 1 scheduled, 2 live...
   kickoff_utc:string | null;
   kickoff_bahrain:string | null;
   home: Team; away: Team;
   score_home:number; score_away:number;
 };
 
-export type TodayResp = { date_utc:string; fixtures: Fixture[] };
-export type LiveResp  = { count:number; fixtures: Fixture[] };
-export type UpResp    = { days:number; schedule: { date_utc:string; fixtures: Fixture[] }[] };
+export type DateResp  = { date_utc:string; fixtures: Fixture[] };
 
 export async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${BASE}${path}`;
