@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import type { Fixture } from "@/lib/api";
 
 function badge(state_id: number) {
