@@ -1,19 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import MatchCard from "@/components/MatchCard";
+import MatchRow from "@/components/MatchRow";
 import { fetchJSON, LiveResp, TodayResp, UpResp, Fixture } from "@/lib/api";
 
-type SectionProps = { title: string; items: Fixture[]; emptyText?: string };
-function Section({ title, items, emptyText }: SectionProps) {
+function Section({ title, items, empty }: { title: string; items: Fixture[]; empty: string }) {
   return (
-    <section className="container my-6">
+    <section className="section">
       <h2 className="section-title">{title}</h2>
       {items.length === 0 ? (
-        <div className="card text-sm text-gray-600">{emptyText ?? "لا توجد عناصر"}</div>
+        <div className="empty">{empty}</div>
       ) : (
-        <div className="grid gap-3">
-          {items.map((f) => <MatchCard key={f.id} f={f} />)}
+        <div className="list">
+          {items.map(f => <MatchRow key={f.id} f={f} />)}
         </div>
       )}
     </section>
@@ -26,83 +25,91 @@ export default function Home() {
   const [todayDate, setTodayDate] = useState<string>("");
   const [fallbackDate, setFallbackDate] = useState<string | null>(null);
   const [upcoming, setUpcoming] = useState<UpResp["schedule"]>([]);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
+  async function loadAll() {
+    const [liveRes, todayRes] = await Promise.all([
+      fetchJSON<LiveResp>("/api/live"),
+      fetchJSON<TodayResp>("/api/fixtures/today"),
+    ]);
 
-    async function load() {
-      try {
-        const [liveRes, todayRes] = await Promise.all([
-          fetchJSON<LiveResp>("/api/live"),
-          fetchJSON<TodayResp>("/api/fixtures/today"),
-        ]);
+    setLive(liveRes.fixtures ?? []);
+    setToday(todayRes.fixtures ?? []);
+    setTodayDate(todayRes.date_utc ?? "");
 
-        if (cancelled) return;
-        setLive(liveRes.fixtures ?? []);
-        setToday(todayRes.fixtures ?? []);
-        setTodayDate(todayRes.date_utc ?? "");
+    if (!todayRes.fixtures || todayRes.fixtures.length === 0) {
+      const tomorrow = await fetchJSON<TodayResp>("/api/fixtures/tomorrow");
+      setFallbackDate(tomorrow.date_utc ?? null);
+      setToday(tomorrow.fixtures ?? []);
 
-        // If no matches today, auto-fallback to tomorrow and upcoming
-        if (!todayRes.fixtures || todayRes.fixtures.length === 0) {
-          const tomorrow = await fetchJSON<TodayResp>("/api/fixtures/tomorrow");
-          if (cancelled) return;
-          setFallbackDate(tomorrow.date_utc ?? null);
-          setToday(tomorrow.fixtures ?? []);
-
-          // also show the next 7 days compact schedule
-          const up = await fetchJSON<UpResp>("/api/fixtures/upcoming?days=7");
-          if (!cancelled) setUpcoming(up.schedule ?? []);
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      const up = await fetchJSON<UpResp>("/api/fixtures/upcoming?days=7");
+      setUpcoming(up.schedule ?? []);
+    } else {
+      setFallbackDate(null);
+      setUpcoming([]);
     }
 
-    load();
-    const t = setInterval(load, 30_000); // refresh every 30s for live
-    return () => { cancelled = true; clearInterval(t); };
+    setLastUpdated(new Date());
+  }
+
+  useEffect(() => {
+    let stop = false;
+    (async () => {
+      try {
+        await loadAll();
+      } finally {
+        setLoading(false);
+      }
+    })();
+    const t = setInterval(() => { if (!stop) loadAll(); }, 30_000);
+    return () => { stop = true; clearInterval(t); };
   }, []);
 
+  function since() {
+    if (!lastUpdated) return "";
+    const diff = Math.floor((Date.now() - lastUpdated.getTime()) / 1000);
+    if (diff < 60) return `آخر تحديث قبل ${diff} ثانية`;
+    const mins = Math.floor(diff / 60);
+    return `آخر تحديث قبل ${mins} دقيقة`;
+  }
+
   return (
-    <main className="pb-16">
-      <header className="bg-white/80 backdrop-blur border-b">
-        <div className="container py-4 flex items-center justify-between">
+    <main>
+      <header className="header">
+        <div className="header-inner">
           <h1 className="text-2xl font-bold">Goals4Arab</h1>
-          <div className="text-sm text-gray-500">نتائج مباشرة ومباريات اليوم</div>
+          <div className="text-xs text-gray-500">{since()}</div>
         </div>
       </header>
 
       {loading ? (
-        <section className="container my-8">
-          <div className="card animate-pulse h-20" />
-          <div className="card animate-pulse h-20 mt-3" />
+        <section className="section">
+          <div className="empty">...جاري التحميل</div>
         </section>
       ) : (
         <>
           <Section
             title="المباريات المباشرة الآن"
             items={live}
-            emptyText="لا توجد مباريات مباشرة الآن"
+            empty="لا توجد مباريات مباشرة الآن"
           />
 
           <Section
             title={fallbackDate ? `مباريات يوم ${fallbackDate}` : `مباريات اليوم (${todayDate})`}
             items={today}
-            emptyText="لا توجد مباريات اليوم"
+            empty="لا توجد مباريات اليوم"
           />
 
           {upcoming.length > 0 && (
-            <section className="container my-6">
+            <section className="section">
               <h2 className="section-title">خلال ٧ أيام قادمة</h2>
-              <div className="grid gap-6">
+              <div className="list">
                 {upcoming.map((d) => (
-                  <div key={d.date_utc} className="space-y-2">
-                    <div className="text-sm text-gray-500">{d.date_utc}</div>
-                    <div className="grid gap-3">
-                      {d.fixtures.map((f) => <MatchCard key={f.id} f={f} />)}
+                  <div key={d.date_utc} className="py-2">
+                    <div className="text-sm text-gray-500 mb-2">{d.date_utc}</div>
+                    <div className="divide-y">
+                      {d.fixtures.map((f) => <MatchRow key={f.id} f={f} />)}
                     </div>
                   </div>
                 ))}
@@ -112,9 +119,7 @@ export default function Home() {
         </>
       )}
 
-      <footer className="container my-8 text-center text-xs text-gray-400">
-        © {new Date().getFullYear()} Goals4Arab
-      </footer>
+      <footer className="footer">© {new Date().getFullYear()} Goals4Arab</footer>
     </main>
   );
 }

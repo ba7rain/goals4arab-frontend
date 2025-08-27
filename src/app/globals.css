@@ -2,19 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light; }
+/* Simple, readable, row-focused */
+.container { @apply max-w-3xl mx-auto px-3; }
 
-.container {
-  @apply max-w-5xl mx-auto px-4;
-}
-.card {
-  @apply bg-white rounded-2xl shadow-sm border border-gray-100 p-4;
-}
-.section-title {
-  @apply text-xl font-bold mb-3;
-}
-.badge {
-  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold;
-}
-.badge-live { @apply bg-red-100 text-red-700; }
-.badge-scheduled { @apply bg-gray-100 text-gray-700; }
+.header { @apply border-b; }
+.header-inner { @apply container py-4 flex items-center justify-between; }
+
+.section { @apply container my-6; }
+.section-title { @apply text-lg font-bold mb-3; }
+
+.list { @apply divide-y; }
+.row { @apply flex items-center justify-between py-3; }
+
+.team { @apply flex items-center gap-2 min-w-0; }
+.team-name { @apply truncate; }
+
+.kick { @apply text-xs text-gray-500; }
+.score { @apply text-xl font-bold tabular-nums; }
+
+.badge { @apply text-xs px-2 py-0.5 rounded-full border; }
+.badge-live { @apply border-red-300 text-red-700; }
+.badge-done { @apply border-emerald-300 text-emerald-700; }
+.badge-soon { @apply border-gray-300 text-gray-600; }
+
+.empty { @apply text-sm text-gray-500 border rounded-lg p-4; }
+.footer { @apply container my-10 text-center text-xs text-gray-400; }
