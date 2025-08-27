@@ -1,195 +1,99 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { fetchJSON, LiveResp, TodayResp, UpResp, Fixture } from "@/lib/api";
+import { useEffect, useState, useMemo } from "react";
 import MatchRow from "@/components/MatchRow";
-
-function Section({ title, items, empty }: { title: string; items: Fixture[]; empty: string }) {
-  return (
-    <section className="section">
-      <h2 className="section-title">{title}</h2>
-      {items.length === 0 ? (
-        <div className="empty">{empty}</div>
-      ) : (
-        <div className="list">
-          {items.map((f) => (
-            <MatchRow key={f.id} f={f} />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
+import { fetchJSON, Fixture } from "@/lib/api";
 
 export default function Home() {
-  // existing sections
-  const [live, setLive] = useState<Fixture[]>([]);
-  const [today, setToday] = useState<Fixture[]>([]);
-  const [todayDate, setTodayDate] = useState<string>("");
-  const [fallbackDate, setFallbackDate] = useState<string | null>(null);
-  const [upcoming, setUpcoming] = useState<UpResp["schedule"]>([]);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  // selected date (YYYY-MM-DD), default = today UTC
+  const [date, setDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  // NEW: calendar (date picker) state
-  const [pickedDate, setPickedDate] = useState<string>(""); // YYYY-MM-DD
-  const [pickedFixtures, setPickedFixtures] = useState<Fixture[]>([]);
-  const [pickedLoading, setPickedLoading] = useState(false);
-
-  // helper: human “last updated”
-  function since() {
+  // formatted “last updated”
+  const since = useMemo(() => {
     if (!lastUpdated) return "";
     const diff = Math.floor((Date.now() - lastUpdated.getTime()) / 1000);
     if (diff < 60) return `آخر تحديث قبل ${diff} ثانية`;
     const mins = Math.floor(diff / 60);
     return `آخر تحديث قبل ${mins} دقيقة`;
-  }
+  }, [lastUpdated]);
 
-  async function loadAll() {
-    const [liveRes, todayRes] = await Promise.all([
-      fetchJSON<LiveResp>("/api/live"),
-      fetchJSON<TodayResp>("/api/fixtures/today"),
-    ]);
-
-    setLive(liveRes.fixtures ?? []);
-    setToday(todayRes.fixtures ?? []);
-    setTodayDate(todayRes.date_utc ?? "");
-
-    if (!todayRes.fixtures || todayRes.fixtures.length === 0) {
-      const tomorrow = await fetchJSON<TodayResp>("/api/fixtures/tomorrow");
-      setFallbackDate(tomorrow.date_utc ?? null);
-      setToday(tomorrow.fixtures ?? []);
-
-      const up = await fetchJSON<UpResp>("/api/fixtures/upcoming?days=7");
-      setUpcoming(up.schedule ?? []);
-    } else {
-      setFallbackDate(null);
-      setUpcoming([]);
+  // load fixtures for the selected date
+  async function loadForDate(d: string) {
+    setLoading(true);
+    try {
+      const res = await fetchJSON<{ date_utc: string; fixtures: Fixture[] }>(`/api/fixtures/date/${d}`);
+      setFixtures(res.fixtures ?? []);
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error(err);
+      setFixtures([]);
+    } finally {
+      setLoading(false);
     }
-
-    setLastUpdated(new Date());
   }
 
+  // initial load + refresh every 30s for the selected date
   useEffect(() => {
-    let stop = false;
-    (async () => {
-      try {
-        await loadAll();
-      } finally {
-        setLoading(false);
-      }
-    })();
-    const t = setInterval(() => {
-      if (!stop) loadAll();
-    }, 30_000);
+    let cancelled = false;
+
+    const run = async () => {
+      if (cancelled) return;
+      await loadForDate(date);
+    };
+
+    run();
+    const t = setInterval(run, 30_000);
     return () => {
-      stop = true;
+      cancelled = true;
       clearInterval(t);
     };
-  }, []);
-
-  // NEW: when user picks a date, fetch that day’s fixtures
-  async function onPickDate(value: string) {
-    setPickedDate(value);
-    if (!value) {
-      setPickedFixtures([]);
-      return;
-    }
-    try {
-      setPickedLoading(true);
-      const data = await fetchJSON<{ date_utc: string; fixtures: Fixture[] }>(
-        `/api/fixtures/date/${value}`
-      );
-      setPickedFixtures(data.fixtures ?? []);
-    } catch (e) {
-      console.error(e);
-      setPickedFixtures([]);
-    } finally {
-      setPickedLoading(false);
-    }
-  }
-
-  // default date input value = today in UTC (YYYY-MM-DD)
-  useEffect(() => {
-    const todayUtc = new Date().toISOString().slice(0, 10);
-    setPickedDate(todayUtc);
-    // auto-load today for the date picker (optional)
-    onPickDate(todayUtc);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [date]); // re-run when the date changes
 
   return (
     <main>
+      {/* Header with date picker at the very top */}
       <header className="header">
         <div className="header-inner">
           <h1 className="text-2xl font-bold">Goals4Arab</h1>
-          <div className="text-xs text-gray-500">{since()}</div>
+
+          {/* date picker */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-600">اختر التاريخ:</label>
+            <input
+              type="date"
+              className="border rounded-lg px-3 py-2 text-sm"
+              dir="ltr"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* last updated */}
+        <div className="header-inner pt-0">
+          <div className="text-xs text-gray-500">{since}</div>
         </div>
       </header>
 
-      {loading ? (
-        <section className="section">
+      {/* Single section that shows ONLY the selected date */}
+      <section className="section">
+        <h2 className="section-title">مباريات يوم {date}</h2>
+
+        {loading ? (
           <div className="empty">...جاري التحميل</div>
-        </section>
-      ) : (
-        <>
-          {/* LIVE */}
-          <Section title="المباريات المباشرة الآن" items={live} empty="لا توجد مباريات مباشرة الآن" />
-
-          {/* TODAY (or tomorrow fallback) */}
-          <Section
-            title={fallbackDate ? `مباريات يوم ${fallbackDate}` : `مباريات اليوم (${todayDate})`}
-            items={today}
-            empty="لا توجد مباريات اليوم"
-          />
-
-          {/* UPCOMING (only if today is empty) */}
-          {upcoming.length > 0 && (
-            <section className="section">
-              <h2 className="section-title">خلال ٧ أيام قادمة</h2>
-              <div className="list">
-                {upcoming.map((d) => (
-                  <div key={d.date_utc} className="py-2">
-                    <div className="text-sm text-gray-500 mb-2">{d.date_utc}</div>
-                    <div className="divide-y">
-                      {d.fixtures.map((f) => (
-                        <MatchRow key={f.id} f={f} />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* NEW: Calendar picker section */}
-          <section className="section">
-            <h2 className="section-title">اختر تاريخًا لعرض المباريات</h2>
-
-            <div className="mb-3">
-              <input
-                type="date"
-                className="border rounded-lg px-3 py-2 text-sm"
-                dir="ltr"
-                value={pickedDate}
-                onChange={(e) => onPickDate(e.target.value)}
-              />
-            </div>
-
-            {pickedLoading ? (
-              <div className="empty">...جاري تحميل مباريات هذا التاريخ</div>
-            ) : (
-              <div className="list">
-                {pickedFixtures.length === 0 ? (
-                  <div className="empty">لا توجد مباريات في هذا التاريخ</div>
-                ) : (
-                  pickedFixtures.map((f) => <MatchRow key={f.id} f={f} />)
-                )}
-              </div>
-            )}
-          </section>
-        </>
-      )}
+        ) : fixtures.length === 0 ? (
+          <div className="empty">لا توجد مباريات في هذا التاريخ</div>
+        ) : (
+          <div className="list">
+            {fixtures.map((f) => (
+              <MatchRow key={f.id} f={f} />
+            ))}
+          </div>
+        )}
+      </section>
 
       <footer className="footer">© {new Date().getFullYear()} Goals4Arab</footer>
     </main>
