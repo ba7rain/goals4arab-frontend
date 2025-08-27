@@ -36,7 +36,12 @@ type SMFixtureDetail = {
   league?: { id?: number; name?: string } | null;
 };
 
+// API may return { data: T } or T directly
 type APIEnvelope<T> = { data?: T } | T;
+
+function hasData<T>(v: unknown): v is { data: T } {
+  return typeof v === "object" && v !== null && "data" in v;
+}
 
 function formatKickoffBahrain(starting_at?: string): string {
   if (!starting_at) return "—";
@@ -60,10 +65,18 @@ export default function MatchPage({ params }: { params: { id: string } }) {
         const base = process.env.NEXT_PUBLIC_API_URL ?? "";
         const res = await fetch(`${base}/api/matches/${id}`, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
         const json: APIEnvelope<SMFixtureDetail | SMFixtureDetail[]> = await res.json();
-        const payload = "data" in json ? json.data : json;
-        const first = Array.isArray(payload) ? payload[0] : payload;
-        if (!cancelled) setFx(first ?? null);
+        const payload: SMFixtureDetail | SMFixtureDetail[] | undefined = hasData<
+          SMFixtureDetail | SMFixtureDetail[]
+        >(json)
+          ? json.data
+          : (json as SMFixtureDetail | SMFixtureDetail[] | undefined);
+
+        const first: SMFixtureDetail | null =
+          Array.isArray(payload) ? payload[0] ?? null : payload ?? null;
+
+        if (!cancelled) setFx(first);
       } catch {
         if (!cancelled) setFx(null);
       } finally {
